@@ -34,9 +34,23 @@ public class Main {
 
             checkAndTriggerDownload();
 
-            String response = "<html><body><h1>Todo App</h1><img src=\"/image\" style=\"max-width:100%; max-height:400px;\" /></body></html>";
+            String response = "<html><body>" +
+                    "<h1>Todo App</h1>" +
+                    "<img src=\"/image\" style=\"max-width:100%; max-height:400px;\" /><br/><br/>" +
+                    "<form style=\"margin-bottom: 20px;\">" +
+                    "   <input type=\"text\" maxlength=\"140\" placeholder=\"Enter your todo...\" style=\"width: 300px; padding: 5px;\" /> " +
+                    "   <button type=\"button\">Send</button>" +
+                    "</form>" +
+                    "<h3>My Todos:</h3>" +
+                    "<ul>" +
+                    "   <li>Todo 1: Learn Kubernetes Basics</li>" +
+                    "   <li>Todo 2: Configure Persistent Volumes</li>" +
+                    "   <li>Todo 3: Complete Chapter 2 Exercises</li>" +
+                    "</ul>" +
+                    "</body></html>";
+
             exchange.getResponseHeaders().set("Content-Type", "text/html");
-            exchange.sendResponseHeaders(200, response.length());
+            exchange.sendResponseHeaders(200, response.getBytes().length);
             exchange.getResponseBody().write(response.getBytes());
             exchange.getResponseBody().close();
         });
@@ -67,7 +81,6 @@ public class Main {
 
     private static synchronized void checkAndTriggerDownload() {
         File file = new File(FILE_PATH);
-
         if (file.exists() && (System.currentTimeMillis() - file.lastModified() > 10 * 60 * 1000)) {
             if (!isDownloading) {
                 isDownloading = true;
