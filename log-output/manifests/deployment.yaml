@@ -12,7 +12,23 @@ spec:
       labels:
         app: log-output
     spec:
+      volumes:
+        - name: shared-logs
+          emptyDir: {}
       containers:
-        - name: log-output
+
+        - name: log-writer
           image: log-output:v1
           imagePullPolicy: IfNotPresent
+          command: ["java", "-cp", "app.jar", "com.example.Writer"]
+          volumeMounts:
+            - name: shared-logs
+              mountPath: /usr/src/app/files
+
+        - name: log-reader
+          image: log-output:v1
+          imagePullPolicy: IfNotPresent
+          command: ["java", "-cp", "app.jar", "com.example.Reader"]
+          volumeMounts:
+            - name: shared-logs
+              mountPath: /usr/src/app/files
