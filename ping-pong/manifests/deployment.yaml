@@ -12,7 +12,14 @@ spec:
       labels:
         app: ping-pong
     spec:
+      volumes:
+        - name: local-persistent-storage
+          persistentVolumeClaim:
+            claimName: shared-claim
       containers:
         - name: ping-pong
           image: ping-pong:v1
           imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: local-persistent-storage
+              mountPath: /usr/src/app/files
