@@ -33,7 +33,6 @@ public class Main {
                 if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                     checkAndTriggerDownload();
 
-
                     List<String> todos = fetchTodosFromBackend();
 
                     StringBuilder listHtml = new StringBuilder("<ul>");
@@ -45,9 +44,8 @@ public class Main {
                     String response = "<html><body>" +
                             "<h1>Todo App</h1>" +
                             "<img src=\"/image\" style=\"max-width:100%; max-height:400px;\" /><br/><br/>" +
-
                             "<form action=\"/todos\" method=\"POST\" style=\"margin-bottom: 20px;\">" +
-                            "   <input type=\"text\" name=\"content\" maxlength=\"140\" placeholder=\"Enter your todo...\" style=\"width: 300px; padding: 5px Ramsay;\" required /> " +
+                            "   <input type=\"text\" name=\"content\" maxlength=\"140\" placeholder=\"Enter your todo...\" style=\"width: 300px; padding: 5px;\" required /> " +
                             "   <button type=\"submit\">Send</button>" +
                             "</form>" +
                             "<h3>My Todos:</h3>" +
@@ -60,12 +58,10 @@ public class Main {
                     exchange.getResponseBody().close();
                 }
             } else if (path.equals("/todos") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-
                 InputStream is = exchange.getRequestBody();
                 String body = new String(is.readAllBytes());
 
                 sendTodoToBackend(body);
-
 
                 exchange.getResponseHeaders().set("Location", "/");
                 exchange.sendResponseHeaders(303, -1);
@@ -96,7 +92,7 @@ public class Main {
     private static List<String> fetchTodosFromBackend() {
         List<String> list = new ArrayList<>();
         try {
-            URL url = new URL("http://todo-backend-svc:2345/todos");
+            URL url = new URL("http://todo-backend-svc.project:2345/todos");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             try (InputStream in = conn.getInputStream()) {
@@ -117,7 +113,7 @@ public class Main {
 
     private static void sendTodoToBackend(String body) {
         try {
-            URL url = new URL("http://todo-backend-svc:2345/todos");
+            URL url = new URL("http://todo-backend-svc.project:2345/todos");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);

@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: todo-app-dep
+  namespace: project
 spec:
   replicas: 1
   selector:
@@ -12,10 +13,14 @@ spec:
       labels:
         app: todo-app
     spec:
+      volumes:
+        - name: local-persistent-storage
+          persistentVolumeClaim:
+            claimName: shared-claim
       containers:
         - name: todo-app
           image: todo-app:v1
           imagePullPolicy: IfNotPresent
-          env:
-            - name: PORT
-              value: "8080"
+          volumeMounts:
+            - name: local-persistent-storage
+              mountPath: /usr/src/app/files
