@@ -2,27 +2,21 @@ package com.example;
 
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.net.InetSocketAddress;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.UUID;
 
 public class Main {
     private static final String RANDOM_STRING = UUID.randomUUID().toString();
-    private static final String FILE_PATH = "/usr/src/app/files/count.txt";
 
     public static void main(String[] args) throws IOException {
+
         Thread logThread = new Thread(() -> {
             while (true) {
-                String count = "0";
-                try {
-                    if (Files.exists(Paths.get(FILE_PATH))) {
-                        count = Files.readString(Paths.get(FILE_PATH)).trim();
-                    }
-                } catch (IOException e) {
-                    // ignore
-                }
+                String count = fetchPongCount();
                 System.out.println(Instant.now().toString() + ": " + RANDOM_STRING + ". Ping / Pongs: " + count);
                 try { Thread.sleep(5000); } catch (InterruptedException e) { break; }
             }
@@ -33,16 +27,7 @@ public class Main {
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
 
         server.createContext("/", exchange -> {
-            String count = "0";
-            try {
-                if (Files.exists(Paths.get(FILE_PATH))) {
-                    count = Files.readString(Paths.get(FILE_PATH)).trim();
-                }
-            } catch (IOException e) {
-                count = "0";
-            }
-
-
+            String count = fetchPongCount();
             String response = Instant.now().toString() + ": " + RANDOM_STRING + ". Ping / Pongs: " + count;
             exchange.getResponseHeaders().set("Content-Type", "text/plain");
             exchange.sendResponseHeaders(200, response.length());
@@ -52,5 +37,21 @@ public class Main {
 
         server.start();
         System.out.println("Log-output server started on port " + port);
+    }
+
+    private static String fetchPongCount() {
+        try {
+            URL url = new URL("http://ping-pong-svc:2345/pongs");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(2000);
+
+            try (InputStream in = conn.getInputStream()) {
+                return new String(in.readAllBytes()).trim();
+            }
+        } catch (Exception e) {
+            return "0";
+        }
     }
 }

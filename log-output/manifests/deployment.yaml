@@ -12,15 +12,8 @@ spec:
       labels:
         app: log-output
     spec:
-      volumes:
-        - name: local-persistent-storage
-          persistentVolumeClaim:
-            claimName: shared-claim
       containers:
         - name: log-output
           image: log-output:v1
           imagePullPolicy: IfNotPresent
           command: ["java", "-cp", "app.jar", "com.example.Main"]
-          volumeMounts:
-            - name: local-persistent-storage
-              mountPath: /usr/src/app/files
