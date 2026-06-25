@@ -16,12 +16,12 @@ public class Main {
     }
 
     public static void main(String[] args) throws IOException {
-        int port = 8080;
+        String portEnv = System.getenv("PORT");
+        int port = (portEnv != null) ? Integer.parseInt(portEnv) : 8080;
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
 
         server.createContext("/todos", exchange -> {
             if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
-
                 StringBuilder sb = new StringBuilder("[");
                 for (int i = 0; i < todos.size(); i++) {
                     sb.append("\"").append(todos.get(i)).append("\"");
@@ -33,7 +33,6 @@ public class Main {
                 exchange.sendResponseHeaders(200, response.getBytes().length);
                 exchange.getResponseBody().write(response.getBytes());
             } else if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-
                 InputStream is = exchange.getRequestBody();
                 String body = new String(is.readAllBytes()).trim();
                 String todoText = body;

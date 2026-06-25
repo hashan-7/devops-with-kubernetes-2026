@@ -24,3 +24,14 @@ spec:
           volumeMounts:
             - name: local-persistent-storage
               mountPath: /usr/src/app/files
+          env:
+            - name: PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: todo-config
+                  key: PORT
+            - name: BACKEND_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: todo-config
+                  key: BACKEND_URL

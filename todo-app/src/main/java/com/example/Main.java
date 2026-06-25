@@ -14,6 +14,7 @@ public class Main {
     private static final String DIRECTORY_PATH = "/usr/src/app/files";
     private static final String FILE_PATH = DIRECTORY_PATH + "/image.jpg";
     private static boolean isDownloading = false;
+    private static String backendUrl;
 
     public static void main(String[] args) throws IOException {
         File dir = new File(DIRECTORY_PATH);
@@ -23,6 +24,11 @@ public class Main {
 
         String portEnv = System.getenv("PORT");
         int port = (portEnv != null) ? Integer.parseInt(portEnv) : 8080;
+
+        backendUrl = System.getenv("BACKEND_URL");
+        if (backendUrl == null) {
+            backendUrl = "http://todo-backend-svc.project:2345/todos";
+        }
 
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
 
@@ -72,19 +78,6 @@ public class Main {
             }
         });
 
-        server.createContext("/image", exchange -> {
-            File file = new File(FILE_PATH);
-            if (!file.exists()) {
-                exchange.sendResponseHeaders(404, -1);
-                return;
-            }
-            byte[] bytes = Files.readAllBytes(file.toPath());
-            exchange.getResponseHeaders().set("Content-Type", "image/jpeg");
-            exchange.sendResponseHeaders(200, bytes.length);
-            exchange.getResponseBody().write(bytes);
-            exchange.getResponseBody().close();
-        });
-
         server.start();
         System.out.println("Frontend started on port " + port);
     }
@@ -92,7 +85,7 @@ public class Main {
     private static List<String> fetchTodosFromBackend() {
         List<String> list = new ArrayList<>();
         try {
-            URL url = new URL("http://todo-backend-svc.project:2345/todos");
+            URL url = new URL(backendUrl);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             try (InputStream in = conn.getInputStream()) {
@@ -113,7 +106,7 @@ public class Main {
 
     private static void sendTodoToBackend(String body) {
         try {
-            URL url = new URL("http://todo-backend-svc.project:2345/todos");
+            URL url = new URL(backendUrl);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
