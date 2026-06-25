@@ -13,8 +13,21 @@ spec:
       labels:
         app: log-output
     spec:
+      volumes:
+        - name: config-volume
+          configMap:
+            name: log-output-config
       containers:
         - name: log-output
           image: log-output:v1
           imagePullPolicy: IfNotPresent
           command: ["java", "-cp", "app.jar", "com.example.Main"]
+          env:
+            - name: MESSAGE
+              valueFrom:
+                configMapKeyRef:
+                  name: log-output-config
+                  key: MESSAGE
+          volumeMounts:
+            - name: config-volume
+              mountPath: /config
