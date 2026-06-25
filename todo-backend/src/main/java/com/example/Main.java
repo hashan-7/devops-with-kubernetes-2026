@@ -58,12 +58,16 @@ public class Main {
     }
 
     private static void ensureTableExists() {
+        System.out.println("Connecting to database...");
         while (true) {
             try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
                  Statement stmt = conn.createStatement()) {
                 stmt.execute("CREATE TABLE IF NOT EXISTS todos (id SERIAL PRIMARY KEY, content TEXT);");
+                System.out.println("Database table verified successfully.");
                 break;
             } catch (Exception e) {
+                System.err.println("Database connection failed: " + e.getMessage());
+                e.printStackTrace();
                 try { Thread.sleep(2000); } catch (InterruptedException ie) {}
             }
         }

@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: todo-cronjob
+  namespace: project
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: todo-cron-worker
+              image: curlimages/curl:8.6.0
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  echo "=== STEP 1: Fetching Wikipedia URL ==="
+                  curl --ipv4 -L -o /dev/null -w "%{url_effective}" https://en.wikipedia.org/wiki/Special:Random > /tmp/url.txt 2> /tmp/curl_err.txt
+                  echo "Wikipedia Curl Exit Code: $?"
+                  echo "Wikipedia Curl Errors (If any):"
+                  cat /tmp/curl_err.txt
+                  
+                  URL=$(cat /tmp/url.txt)
+                  echo "Extracted URL: '${URL}'"
+                  
+                  if [ ! -z "$URL" ]; then
+                    echo "=== STEP 2: Sending POST to Backend ==="
+                    curl --ipv4 -v -X POST -H "Content-Type: text/plain" -d "Read ${URL}" http://todo-backend-svc.project:2345/todos 2>&1
+                    echo "Backend POST Exit Code: $?"
+                  else
+                    echo "ERROR: URL is empty. Skipping backend post."
+                  fi
+          restartPolicy: OnFailure

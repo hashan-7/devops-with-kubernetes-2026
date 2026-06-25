@@ -63,6 +63,19 @@ public class Main {
                     exchange.getResponseBody().write(response.getBytes());
                     exchange.getResponseBody().close();
                 }
+            } else if (path.equals("/image") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                // Fixed: Added endpoint to serve the downloaded image correctly
+                File file = new File(FILE_PATH);
+                if (file.exists()) {
+                    exchange.getResponseHeaders().set("Content-Type", "image/jpeg");
+                    exchange.sendResponseHeaders(200, file.length());
+                    try (OutputStream os = exchange.getResponseBody()) {
+                        Files.copy(file.toPath(), os);
+                    }
+                } else {
+                    exchange.sendResponseHeaders(404, -1);
+                    exchange.getResponseBody().close();
+                }
             } else if (path.equals("/todos") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                 InputStream is = exchange.getRequestBody();
                 String body = new String(is.readAllBytes());
