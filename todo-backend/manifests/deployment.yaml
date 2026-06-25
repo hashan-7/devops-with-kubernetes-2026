@@ -23,3 +23,8 @@ spec:
                 configMapKeyRef:
                   name: todo-config
                   key: PORT
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: todo-db-secret
+                  key: POSTGRES_PASSWORD
