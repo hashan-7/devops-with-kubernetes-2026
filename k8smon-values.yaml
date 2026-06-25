@@ -1,0 +1,12 @@
+cluster:
+  name: my-cluster
+destinations:
+  localLoki:
+    type: loki
+    url: http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push
+podLogsViaLoki:
+  enabled: true
+collectors:
+  alloy:
+    enabled: true
+    presets: [filesystem-log-reader]

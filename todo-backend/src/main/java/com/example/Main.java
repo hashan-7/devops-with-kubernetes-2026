@@ -40,15 +40,34 @@ public class Main {
             } else if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                 InputStream is = exchange.getRequestBody();
                 String body = new String(is.readAllBytes()).trim();
+
+                System.out.println("Received todo POST request. Raw content: " + body);
+
                 String todoText = body;
                 if (body.contains("content=")) {
-                    todoText = java.net.URLDecoder.decode(body.split("content=")[1], "UTF-8");
+                    String[] parts = body.split("content=");
+                    if (parts.length > 1) {
+                        todoText = java.net.URLDecoder.decode(parts[1], "UTF-8");
+                    } else {
+                        todoText = "";
+                    }
                 }
-                if (!todoText.isEmpty()) {
+
+
+                if (todoText.length() > 140) {
+                    String errorLog = "Validation failed: Todo length exceeds 140 characters. Length: " + todoText.length();
+                    System.err.println(errorLog);
+
+                    String response = "Rejected: Todo cannot exceed 140 characters.";
+                    exchange.sendResponseHeaders(400, response.getBytes().length);
+                    exchange.getResponseBody().write(response.getBytes());
+                } else if (!todoText.isEmpty()) {
                     saveTodo(todoText);
-                    System.out.println("Added new todo: " + todoText);
+                    System.out.println("Successfully added new todo: " + todoText);
+                    exchange.sendResponseHeaders(200, 0);
+                } else {
+                    exchange.sendResponseHeaders(400, 0);
                 }
-                exchange.sendResponseHeaders(200, 0);
             }
             exchange.getResponseBody().close();
         });
@@ -67,7 +86,6 @@ public class Main {
                 break;
             } catch (Exception e) {
                 System.err.println("Database connection failed: " + e.getMessage());
-                e.printStackTrace();
                 try { Thread.sleep(2000); } catch (InterruptedException ie) {}
             }
         }
