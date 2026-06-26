@@ -62,7 +62,17 @@ jobs:
 
       - name: Deploy
         run: |-
+          if [ "$BRANCH" = "main" ]; then
+            NAMESPACE="project"
+          else
+            NAMESPACE="$BRANCH"
+          fi
+
+          kubectl create namespace $NAMESPACE || true
+          kubectl config set-context --current --namespace=$NAMESPACE
+
           cd todo-app
+          kustomize edit set namespace $NAMESPACE
           kustomize edit set image PROJECT/IMAGE=$IMAGE_TAG
           kustomize build . | kubectl apply -f -
           kubectl rollout status deployment $SERVICE
