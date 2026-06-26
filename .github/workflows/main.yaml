@@ -1,7 +1,7 @@
-name: Release application
+name: Delete environment on branch deletion
 
 on:
-  push:
+  delete:
 
 permissions:
   contents: read
@@ -11,15 +11,10 @@ env:
   PROJECT_ID: ${{ secrets.GKE_PROJECT }}
   GKE_CLUSTER: dwk-cluster
   GKE_ZONE: europe-north1-b
-  REGISTRY: europe-north1-docker.pkg.dev
-  REPOSITORY: my-repository
-  IMAGE: todo-app
-  SERVICE: todo-app-dep
-  BRANCH: ${{ github.ref_name }}
 
 jobs:
-  build-publish-deploy:
-    name: Build, Publish and Deploy
+  delete-namespace:
+    if: github.event.ref_type == 'branch' && github.event.ref != 'main'
     runs-on: ubuntu-latest
     environment: GKE_PROJECT
 
@@ -35,9 +30,6 @@ jobs:
       - name: 'Set up Cloud SDK'
         uses: google-github-actions/setup-gcloud@v3
 
-      - name: 'Use gcloud CLI'
-        run: gcloud info
-
       - name: 'Get GKE credentials'
         uses: 'google-github-actions/get-gke-credentials@v3'
         with:
@@ -45,35 +37,6 @@ jobs:
           project_id: '${{ env.PROJECT_ID }}'
           location: '${{ env.GKE_ZONE }}'
 
-      - name: 'Set up Docker Buildx'
-        run: gcloud auth configure-docker "$REGISTRY"
-
-      - name: 'Form the image name'
-        run: echo "IMAGE_TAG=$REGISTRY/$PROJECT_ID/$REPOSITORY/$IMAGE:$BRANCH-$GITHUB_SHA" >> $GITHUB_ENV
-
-      - name: Build
-        run: docker build --tag $IMAGE_TAG ./todo-app
-
-      - name: Publish
-        run: docker push $IMAGE_TAG
-
-      - name: Set up Kustomize
-        uses: imranismail/setup-kustomize@v3
-
-      - name: Deploy
-        run: |-
-          if [ "$BRANCH" = "main" ]; then
-            NAMESPACE="project"
-          else
-            NAMESPACE="$BRANCH"
-          fi
-
-          kubectl create namespace $NAMESPACE || true
-          kubectl config set-context --current --namespace=$NAMESPACE
-
-          cd todo-app
-          kustomize edit set namespace $NAMESPACE
-          kustomize edit set image PROJECT/IMAGE=$IMAGE_TAG
-          kustomize build . | kubectl apply -f -
-          kubectl rollout status deployment $SERVICE
-          kubectl get services -o wide
+      - name: Delete Namespace
+        run: |
+          kubectl delete namespace ${{ github.event.ref }} || true
