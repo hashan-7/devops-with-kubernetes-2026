@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - manifests/deployment.yaml
   - manifests/service.yaml
+  - manifests/cronjob.yaml
 images:
   - name: PROJECT/IMAGE
     newName: todo-app

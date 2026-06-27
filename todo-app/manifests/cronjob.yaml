@@ -1,35 +1,54 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: todo-cronjob
-  namespace: project
+  name: todo-backup-cronjob
 spec:
-  schedule: "0 * * * *"
+  schedule: "0 0 * * *"
   jobTemplate:
     spec:
       template:
         spec:
           containers:
-            - name: todo-cron-worker
-              image: curlimages/curl:8.6.0
+            - name: backup-worker
+              image: google/cloud-sdk:alpine
+              env:
+                - name: BUCKET_NAME
+                  value: "dwk-todo-backups"
+                - name: PGHOST
+                  value: "postgres-svc"
+                - name: PGUSER
+                  value: "postgres"
+                - name: PGDATABASE
+                  value: "postgres"
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-secret
+                      key: POSTGRES_PASSWORD
+              volumeMounts:
+                - name: google-cloud-key
+                  mountPath: /var/secrets/google
+                  readOnly: true
               command:
                 - /bin/sh
                 - -c
                 - |
-                  echo "=== STEP 1: Fetching Wikipedia URL ==="
-                  curl --ipv4 -L -o /dev/null -w "%{url_effective}" https://en.wikipedia.org/wiki/Special:Random > /tmp/url.txt 2> /tmp/curl_err.txt
-                  echo "Wikipedia Curl Exit Code: $?"
-                  echo "Wikipedia Curl Errors (If any):"
-                  cat /tmp/curl_err.txt
+                  echo "=== STEP 1: Installing Postgres Client ==="
+                  apk add --no-cache postgresql-client
                   
-                  URL=$(cat /tmp/url.txt)
-                  echo "Extracted URL: '${URL}'"
+                  echo "=== STEP 2: Authenticating with Google Cloud ==="
+                  gcloud auth activate-service-account --key-file=/var/secrets/google/key.json
                   
-                  if [ ! -z "$URL" ]; then
-                    echo "=== STEP 2: Sending POST to Backend ==="
-                    curl --ipv4 -v -X POST -H "Content-Type: text/plain" -d "Read ${URL}" http://todo-backend-svc.project:2345/todos 2>&1
-                    echo "Backend POST Exit Code: $?"
-                  else
-                    echo "ERROR: URL is empty. Skipping backend post."
-                  fi
+                  echo "=== STEP 3: Exporting Database Dump ==="
+                  FILENAME="backup-$(date +%Y%m%d-%H%M%S).sql"
+                  pg_dump -h $PGHOST -U $PGUSER -d $PGDATABASE > /tmp/$FILENAME
+                  
+                  echo "=== STEP 4: Uploading to Google Object Storage ==="
+                  gsutil cp /tmp/$FILENAME gs://$BUCKET_NAME/$FILENAME
+                  
+                  echo "=== Backup Process Complete! ==="
           restartPolicy: OnFailure
+          volumes:
+            - name: google-cloud-key
+              secret:
+                secretName: storage-sa-key
