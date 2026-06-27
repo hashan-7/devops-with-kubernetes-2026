@@ -64,7 +64,6 @@ public class Main {
                     exchange.getResponseBody().close();
                 }
             } else if (path.equals("/image") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
-                // Fixed: Added endpoint to serve the downloaded image correctly
                 File file = new File(FILE_PATH);
                 if (file.exists()) {
                     exchange.getResponseHeaders().set("Content-Type", "image/jpeg");
@@ -79,6 +78,7 @@ public class Main {
             } else if (path.equals("/todos") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                 InputStream is = exchange.getRequestBody();
                 String body = new String(is.readAllBytes());
+                System.out.println("[Todo App] New todo creation request received: " + body);
 
                 sendTodoToBackend(body);
 
