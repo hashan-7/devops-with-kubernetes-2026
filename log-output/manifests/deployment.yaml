@@ -31,3 +31,10 @@ spec:
           volumeMounts:
             - name: config-volume
               mountPath: /config
+
+          readinessProbe:
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            httpGet:
+              path: /healthz
+              port: 8080

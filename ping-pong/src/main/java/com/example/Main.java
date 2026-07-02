@@ -15,7 +15,13 @@ public class Main {
     private static final String DB_PASS = "example";
 
     public static void main(String[] args) throws IOException {
-        ensureTableExists();
+        // 🚀 අලුතින් එකතු කළ කොටස: Postgres Driver එක බලහත්කාරයෙන් ලෝඩ් කිරීම
+        try {
+            Class.forName("org.postgresql.Driver");
+        } catch (ClassNotFoundException e) {
+            System.out.println("Error: PostgreSQL JDBC Driver not found!");
+            return;
+        }
 
         int port = 8080;
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
@@ -37,8 +43,32 @@ public class Main {
             exchange.getResponseBody().close();
         });
 
+        server.createContext("/healthz", exchange -> {
+            boolean isDbConnected = false;
+            try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
+                 Statement stmt = conn.createStatement()) {
+                stmt.execute("SELECT 1;");
+                isDbConnected = true;
+            } catch (Exception e) {
+                isDbConnected = false;
+            }
+
+            if (isDbConnected) {
+                String response = "OK";
+                exchange.sendResponseHeaders(200, response.length());
+                exchange.getResponseBody().write(response.getBytes());
+            } else {
+                String response = "Error: DB not connected";
+                exchange.sendResponseHeaders(500, response.length());
+                exchange.getResponseBody().write(response.getBytes());
+            }
+            exchange.getResponseBody().close();
+        });
+
         server.start();
         System.out.println("Ping-pong server started on port " + port);
+
+        ensureTableExists();
     }
 
     private static void ensureTableExists() {
@@ -47,8 +77,10 @@ public class Main {
                  Statement stmt = conn.createStatement()) {
                 stmt.execute("CREATE TABLE IF NOT EXISTS pingpong_count (id INT PRIMARY KEY, value INT);");
                 stmt.execute("INSERT INTO pingpong_count (id, value) VALUES (1, 0) ON CONFLICT (id) DO NOTHING;");
+                System.out.println("Database table initialized successfully.");
                 break;
             } catch (Exception e) {
+                System.out.println("Database not ready yet. Retrying... Error: " + e.getMessage());
                 try { Thread.sleep(2000); } catch (InterruptedException ie) {}
             }
         }

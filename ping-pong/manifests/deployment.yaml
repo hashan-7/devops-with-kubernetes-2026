@@ -19,6 +19,13 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
+          # අලුතින් එකතු කළ කොටස
+          readinessProbe:
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            httpGet:
+              path: /healthz
+              port: 8080
 ---
 apiVersion: v1
 kind: Service

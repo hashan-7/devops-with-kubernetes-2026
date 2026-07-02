@@ -58,13 +58,28 @@ public class Main {
             exchange.getResponseBody().close();
         });
 
+
+        server.createContext("/healthz", exchange -> {
+            if (isPingPongReady()) {
+                String response = "OK";
+                exchange.sendResponseHeaders(200, response.length());
+                exchange.getResponseBody().write(response.getBytes());
+            } else {
+                String response = "Error: Ping-pong unreachable";
+                exchange.sendResponseHeaders(500, response.length());
+                exchange.getResponseBody().write(response.getBytes());
+            }
+            exchange.getResponseBody().close();
+        });
+
         server.start();
         System.out.println("Log-output server started on port " + port);
     }
 
     private static String fetchPongCount() {
         try {
-            URL url = new URL("http://ping-pong-svc:2345/pongs");
+
+            URL url = new URL("http://ping-pong-svc:80/pongs");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(2000);
@@ -75,6 +90,18 @@ public class Main {
             }
         } catch (Exception e) {
             return "0";
+        }
+    }
+
+    private static boolean isPingPongReady() {
+        try {
+            URL url = new URL("http://ping-pong-svc:80/pongs");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(2000);
+            return conn.getResponseCode() == 200;
+        } catch (Exception e) {
+            return false;
         }
     }
 }
