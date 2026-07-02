@@ -15,7 +15,7 @@ public class Main {
     private static final String DB_PASS = "example";
 
     public static void main(String[] args) throws IOException {
-        // 🚀 අලුතින් එකතු කළ කොටස: Postgres Driver එක බලහත්කාරයෙන් ලෝඩ් කිරීම
+
         try {
             Class.forName("org.postgresql.Driver");
         } catch (ClassNotFoundException e) {

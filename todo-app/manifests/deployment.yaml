@@ -19,8 +19,8 @@ spec:
             claimName: shared-claim
       containers:
         - name: todo-app
-          image: hashan7/todo-app:v1
-          imagePullPolicy: Always
+          image: hashan7/todo-app:v2
+          imagePullPolicy: IfNotPresent
           volumeMounts:
             - name: local-persistent-storage
               mountPath: /usr/src/app/files
@@ -35,6 +35,18 @@ spec:
                 configMapKeyRef:
                   name: todo-config
                   key: BACKEND_URL
+          readinessProbe:
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            httpGet:
+              path: /healthz
+              port: 8080
+          livenessProbe:
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            httpGet:
+              path: /healthz
+              port: 8080
           resources:
             requests:
               cpu: "50m"

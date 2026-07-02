@@ -17,14 +17,30 @@ public class Main {
     private static final String DB_USER = "postgres";
     private static final String DB_PASS = System.getenv("DB_PASSWORD");
 
+    private static boolean isHealthy = true;
+
     public static void main(String[] args) throws IOException {
-        ensureTableExists();
+        try {
+            Class.forName("org.postgresql.Driver");
+        } catch (ClassNotFoundException e) {
+            System.out.println("Error: PostgreSQL JDBC Driver not found!");
+            return;
+        }
 
         String portEnv = System.getenv("PORT");
         int port = (portEnv != null) ? Integer.parseInt(portEnv) : 8080;
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
 
         server.createContext("/todos", exchange -> {
+            exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+            exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                exchange.sendResponseHeaders(204, -1);
+                exchange.getResponseBody().close();
+                return;
+            }
+
             if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                 List<String> todos = fetchTodos();
                 StringBuilder sb = new StringBuilder("[");
@@ -53,7 +69,6 @@ public class Main {
                     }
                 }
 
-
                 if (todoText.length() > 140) {
                     String errorLog = "Validation failed: Todo length exceeds 140 characters. Length: " + todoText.length();
                     System.err.println(errorLog);
@@ -72,8 +87,58 @@ public class Main {
             exchange.getResponseBody().close();
         });
 
+        server.createContext("/healthz", exchange -> {
+            exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+            exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                exchange.sendResponseHeaders(204, -1);
+                exchange.getResponseBody().close();
+                return;
+            }
+
+            if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                isHealthy = false;
+                String response = "Backend is now broken!";
+                exchange.sendResponseHeaders(200, response.getBytes().length);
+                exchange.getResponseBody().write(response.getBytes());
+                exchange.getResponseBody().close();
+                return;
+            }
+
+            if (!isHealthy) {
+                String response = "Error: App is broken (Unhealthy)";
+                exchange.sendResponseHeaders(500, response.getBytes().length); // 500 යැව්වාම Liveness Probe එක Fail වෙනවා
+                exchange.getResponseBody().write(response.getBytes());
+                exchange.getResponseBody().close();
+                return;
+            }
+
+            boolean isDbConnected = false;
+            try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
+                 Statement stmt = conn.createStatement()) {
+                stmt.execute("SELECT 1;");
+                isDbConnected = true;
+            } catch (Exception e) {
+                isDbConnected = false;
+            }
+
+            if (isDbConnected) {
+                String response = "OK";
+                exchange.sendResponseHeaders(200, response.getBytes().length);
+                exchange.getResponseBody().write(response.getBytes());
+            } else {
+                String response = "Error: DB not connected";
+                exchange.sendResponseHeaders(500, response.getBytes().length);
+                exchange.getResponseBody().write(response.getBytes());
+            }
+            exchange.getResponseBody().close();
+        });
+
         server.start();
         System.out.println("Backend server started on port " + port);
+
+        ensureTableExists();
     }
 
     private static void ensureTableExists() {

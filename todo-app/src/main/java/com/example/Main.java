@@ -16,6 +16,9 @@ public class Main {
     private static boolean isDownloading = false;
     private static String backendUrl;
 
+
+    private static boolean isHealthy = true;
+
     public static void main(String[] args) throws IOException {
         File dir = new File(DIRECTORY_PATH);
         if (!dir.exists()) dir.mkdirs();
@@ -56,6 +59,20 @@ public class Main {
                             "</form>" +
                             "<h3>My Todos:</h3>" +
                             listHtml.toString() +
+                            "<br/><br/>" +
+                            "<button id=\"break-btn\" style=\"background: red; color: white; padding: 10px; cursor: pointer; border: none; border-radius: 5px;\">" +
+                            "   Break the app" +
+                            "</button>" +
+                            "<script>" +
+                            "   document.getElementById('break-btn').addEventListener('click', async () => {" +
+                            "       try {" +
+                            "           await fetch('/healthz', { method: 'POST' });" +
+                            "           alert('App is broken! Kubernetes will notice the failed Liveness Probe and restart the pod soon.');" +
+                            "       } catch (error) {" +
+                            "           console.error('Error breaking app:', error);" +
+                            "       }" +
+                            "   });" +
+                            "</script>" +
                             "</body></html>";
 
                     exchange.getResponseHeaders().set("Content-Type", "text/html");
@@ -89,6 +106,30 @@ public class Main {
                 exchange.sendResponseHeaders(404, -1);
                 exchange.getResponseBody().close();
             }
+        });
+
+        server.createContext("/healthz", exchange -> {
+            if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                isHealthy = false;
+                String response = "Frontend is now broken!";
+                exchange.sendResponseHeaders(200, response.getBytes().length);
+                exchange.getResponseBody().write(response.getBytes());
+                exchange.getResponseBody().close();
+                return;
+            }
+
+            if (!isHealthy) {
+                String response = "Error: App is broken (Unhealthy)";
+                exchange.sendResponseHeaders(500, response.getBytes().length);
+                exchange.getResponseBody().write(response.getBytes());
+                exchange.getResponseBody().close();
+                return;
+            }
+
+            String response = "OK";
+            exchange.sendResponseHeaders(200, response.getBytes().length);
+            exchange.getResponseBody().write(response.getBytes());
+            exchange.getResponseBody().close();
         });
 
         server.start();
