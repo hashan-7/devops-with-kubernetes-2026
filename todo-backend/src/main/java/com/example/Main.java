@@ -1,28 +1,30 @@
 package com.example;
 
 import com.sun.net.httpserver.HttpServer;
+import io.nats.client.Connection;
+import io.nats.client.Nats;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.Statement;
+import java.sql.*;
 
 public class Main {
     private static final String DB_URL = "jdbc:postgresql://todo-postgres-svc.project:5432/todos";
     private static final String DB_USER = "postgres";
     private static final String DB_PASS = System.getenv("DB_PASSWORD");
-
     private static boolean isHealthy = true;
+
+     private static Connection nc;
 
     public static void main(String[] args) throws IOException {
         try {
             Class.forName("org.postgresql.Driver");
-        } catch (ClassNotFoundException e) {
-            System.out.println("Error: PostgreSQL JDBC Driver not found!");
-            return;
+             String natsUrl = System.getenv("NATS_URL");
+            if (natsUrl == null) natsUrl = "nats://my-nats.nats.svc.cluster.local:4222";
+            nc = Nats.connect(natsUrl);
+            System.out.println("Connected to NATS server.");
+        } catch (Exception e) {
+            System.out.println("Error initializing DB or NATS: " + e.getMessage());
         }
 
         String portEnv = System.getenv("PORT");
@@ -53,11 +55,8 @@ public class Main {
                 String todoText = body;
                 if (body.contains("content=")) {
                     String[] parts = body.split("content=");
-                    if (parts.length > 1) {
-                        todoText = java.net.URLDecoder.decode(parts[1], "UTF-8");
-                    } else {
-                        todoText = "";
-                    }
+                    if (parts.length > 1) todoText = java.net.URLDecoder.decode(parts[1], "UTF-8");
+                    else todoText = "";
                 }
 
                 if (todoText.length() > 140) {
@@ -66,6 +65,9 @@ public class Main {
                     exchange.getResponseBody().write(response.getBytes());
                 } else if (!todoText.isEmpty()) {
                     saveTodo(todoText);
+
+                    publishToNats("A todo was created: " + todoText);
+
                     exchange.sendResponseHeaders(200, 0);
                 } else {
                     exchange.sendResponseHeaders(400, 0);
@@ -75,6 +77,9 @@ public class Main {
                 try {
                     int id = Integer.parseInt(idStr);
                     markTodoDone(id);
+
+                     publishToNats("A todo was marked as done (ID: " + id + ")");
+
                     exchange.sendResponseHeaders(200, 0);
                 } catch (Exception e) {
                     exchange.sendResponseHeaders(400, 0);
@@ -86,73 +91,33 @@ public class Main {
         });
 
         server.createContext("/healthz", exchange -> {
-            exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
-            exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-
-            if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                isHealthy = false;
-                String response = "Backend is now broken!";
-                exchange.sendResponseHeaders(200, response.getBytes().length);
-                exchange.getResponseBody().write(response.getBytes());
-                exchange.getResponseBody().close();
-                return;
-            }
-
-            if (!isHealthy) {
-                String response = "Error: App is broken (Unhealthy)";
-                exchange.sendResponseHeaders(500, response.getBytes().length);
-                exchange.getResponseBody().write(response.getBytes());
-                exchange.getResponseBody().close();
-                return;
-            }
-
-            boolean isDbConnected = false;
-            try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
-                 Statement stmt = conn.createStatement()) {
-                stmt.execute("SELECT 1;");
-                isDbConnected = true;
-            } catch (Exception e) {
-                isDbConnected = false;
-            }
-
-            if (isDbConnected) {
-                String response = "OK";
-                exchange.sendResponseHeaders(200, response.getBytes().length);
-                exchange.getResponseBody().write(response.getBytes());
-            } else {
-                String response = "Error: DB not connected";
-                exchange.sendResponseHeaders(500, response.getBytes().length);
-                exchange.getResponseBody().write(response.getBytes());
-            }
+            String response = isHealthy ? "OK" : "Error";
+            exchange.sendResponseHeaders(isHealthy ? 200 : 500, response.getBytes().length);
+            exchange.getResponseBody().write(response.getBytes());
             exchange.getResponseBody().close();
         });
 
         server.start();
         System.out.println("Backend server started on port " + port);
-
         ensureTableExists();
     }
 
+    private static void publishToNats(String message) {
+        if (nc != null) {
+            nc.publish("todo_updates", message.getBytes());
+            System.out.println("Published to NATS: " + message);
+        }
+    }
+
+
     private static void ensureTableExists() {
-        System.out.println("Connecting to database...");
         while (true) {
             try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
                  Statement stmt = conn.createStatement()) {
-
-
                 stmt.execute("CREATE TABLE IF NOT EXISTS todos (id SERIAL PRIMARY KEY, content TEXT, done BOOLEAN DEFAULT FALSE);");
-
-
-                try {
-                    stmt.execute("ALTER TABLE todos ADD COLUMN done BOOLEAN DEFAULT FALSE;");
-                } catch (Exception ignored) {
-
-                }
-
-                System.out.println("Database table verified successfully.");
+                try { stmt.execute("ALTER TABLE todos ADD COLUMN done BOOLEAN DEFAULT FALSE;"); } catch (Exception ignored) {}
                 break;
             } catch (Exception e) {
-                System.err.println("Database connection failed: " + e.getMessage());
                 try { Thread.sleep(2000); } catch (InterruptedException ie) {}
             }
         }
@@ -166,23 +131,15 @@ public class Main {
             boolean first = true;
             while (rs.next()) {
                 if (!first) sb.append(",");
-                int id = rs.getInt("id");
                 String content = rs.getString("content");
-                if (content != null) {
-                    content = content.replace("\"", "\\\"").replace("\n", " ");
-                } else {
-                    content = "";
-                }
-                boolean done = rs.getBoolean("done");
-
-                sb.append("{\"id\":").append(id)
+                if (content != null) content = content.replace("\"", "\\\"").replace("\n", " ");
+                else content = "";
+                sb.append("{\"id\":").append(rs.getInt("id"))
                         .append(",\"content\":\"").append(content).append("\"")
-                        .append(",\"done\":").append(done).append("}");
+                        .append(",\"done\":").append(rs.getBoolean("done")).append("}");
                 first = false;
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        } catch (Exception e) {}
         sb.append("]");
         return sb.toString();
     }
@@ -192,9 +149,7 @@ public class Main {
              PreparedStatement stmt = conn.prepareStatement("INSERT INTO todos (content) VALUES (?)")) {
             stmt.setString(1, content);
             stmt.executeUpdate();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        } catch (Exception e) {}
     }
 
     private static void markTodoDone(int id) {
@@ -202,9 +157,6 @@ public class Main {
              PreparedStatement stmt = conn.prepareStatement("UPDATE todos SET done = TRUE WHERE id = ?")) {
             stmt.setInt(1, id);
             stmt.executeUpdate();
-            System.out.println("Marked todo " + id + " as done.");
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        } catch (Exception e) {}
     }
 }
