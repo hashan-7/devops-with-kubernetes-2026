@@ -19,7 +19,7 @@ spec:
             claimName: shared-claim
       containers:
         - name: todo-app
-          image: hashan7/todo-app:v2
+          image: hashan7/todo-app:v3
           imagePullPolicy: IfNotPresent
           volumeMounts:
             - name: local-persistent-storage

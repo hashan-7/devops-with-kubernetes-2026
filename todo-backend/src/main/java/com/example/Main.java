@@ -9,8 +9,6 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.List;
 
 public class Main {
     private static final String DB_URL = "jdbc:postgresql://todo-postgres-svc.project:5432/todos";
@@ -33,7 +31,9 @@ public class Main {
 
         server.createContext("/todos", exchange -> {
             exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
-            exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+            exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
+
+            String path = exchange.getRequestURI().getPath();
 
             if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
                 exchange.sendResponseHeaders(204, -1);
@@ -41,23 +41,14 @@ public class Main {
                 return;
             }
 
-            if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
-                List<String> todos = fetchTodos();
-                StringBuilder sb = new StringBuilder("[");
-                for (int i = 0; i < todos.size(); i++) {
-                    sb.append("\"").append(todos.get(i)).append("\"");
-                    if (i < todos.size() - 1) sb.append(",");
-                }
-                sb.append("]");
-                String response = sb.toString();
+            if ("GET".equalsIgnoreCase(exchange.getRequestMethod()) && "/todos".equals(path)) {
+                String response = fetchTodosJson();
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
                 exchange.sendResponseHeaders(200, response.getBytes().length);
                 exchange.getResponseBody().write(response.getBytes());
-            } else if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            } else if ("POST".equalsIgnoreCase(exchange.getRequestMethod()) && "/todos".equals(path)) {
                 InputStream is = exchange.getRequestBody();
                 String body = new String(is.readAllBytes()).trim();
-
-                System.out.println("Received todo POST request. Raw content: " + body);
 
                 String todoText = body;
                 if (body.contains("content=")) {
@@ -70,19 +61,26 @@ public class Main {
                 }
 
                 if (todoText.length() > 140) {
-                    String errorLog = "Validation failed: Todo length exceeds 140 characters. Length: " + todoText.length();
-                    System.err.println(errorLog);
-
                     String response = "Rejected: Todo cannot exceed 140 characters.";
                     exchange.sendResponseHeaders(400, response.getBytes().length);
                     exchange.getResponseBody().write(response.getBytes());
                 } else if (!todoText.isEmpty()) {
                     saveTodo(todoText);
-                    System.out.println("Successfully added new todo: " + todoText);
                     exchange.sendResponseHeaders(200, 0);
                 } else {
                     exchange.sendResponseHeaders(400, 0);
                 }
+            } else if ("PUT".equalsIgnoreCase(exchange.getRequestMethod()) && path.startsWith("/todos/")) {
+                String idStr = path.substring("/todos/".length());
+                try {
+                    int id = Integer.parseInt(idStr);
+                    markTodoDone(id);
+                    exchange.sendResponseHeaders(200, 0);
+                } catch (Exception e) {
+                    exchange.sendResponseHeaders(400, 0);
+                }
+            } else {
+                exchange.sendResponseHeaders(404, -1);
             }
             exchange.getResponseBody().close();
         });
@@ -90,12 +88,6 @@ public class Main {
         server.createContext("/healthz", exchange -> {
             exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
             exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-
-            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
-                exchange.sendResponseHeaders(204, -1);
-                exchange.getResponseBody().close();
-                return;
-            }
 
             if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                 isHealthy = false;
@@ -108,7 +100,7 @@ public class Main {
 
             if (!isHealthy) {
                 String response = "Error: App is broken (Unhealthy)";
-                exchange.sendResponseHeaders(500, response.getBytes().length); // 500 යැව්වාම Liveness Probe එක Fail වෙනවා
+                exchange.sendResponseHeaders(500, response.getBytes().length);
                 exchange.getResponseBody().write(response.getBytes());
                 exchange.getResponseBody().close();
                 return;
@@ -146,7 +138,17 @@ public class Main {
         while (true) {
             try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
                  Statement stmt = conn.createStatement()) {
-                stmt.execute("CREATE TABLE IF NOT EXISTS todos (id SERIAL PRIMARY KEY, content TEXT);");
+
+
+                stmt.execute("CREATE TABLE IF NOT EXISTS todos (id SERIAL PRIMARY KEY, content TEXT, done BOOLEAN DEFAULT FALSE);");
+
+
+                try {
+                    stmt.execute("ALTER TABLE todos ADD COLUMN done BOOLEAN DEFAULT FALSE;");
+                } catch (Exception ignored) {
+
+                }
+
                 System.out.println("Database table verified successfully.");
                 break;
             } catch (Exception e) {
@@ -156,18 +158,33 @@ public class Main {
         }
     }
 
-    private static List<String> fetchTodos() {
-        List<String> list = new ArrayList<>();
+    private static String fetchTodosJson() {
+        StringBuilder sb = new StringBuilder("[");
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
-             PreparedStatement stmt = conn.prepareStatement("SELECT content FROM todos ORDER BY id ASC");
+             PreparedStatement stmt = conn.prepareStatement("SELECT id, content, done FROM todos ORDER BY id ASC");
              ResultSet rs = stmt.executeQuery()) {
+            boolean first = true;
             while (rs.next()) {
-                list.add(rs.getString("content"));
+                if (!first) sb.append(",");
+                int id = rs.getInt("id");
+                String content = rs.getString("content");
+                if (content != null) {
+                    content = content.replace("\"", "\\\"").replace("\n", " ");
+                } else {
+                    content = "";
+                }
+                boolean done = rs.getBoolean("done");
+
+                sb.append("{\"id\":").append(id)
+                        .append(",\"content\":\"").append(content).append("\"")
+                        .append(",\"done\":").append(done).append("}");
+                first = false;
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
-        return list;
+        sb.append("]");
+        return sb.toString();
     }
 
     private static void saveTodo(String content) {
@@ -175,6 +192,17 @@ public class Main {
              PreparedStatement stmt = conn.prepareStatement("INSERT INTO todos (content) VALUES (?)")) {
             stmt.setString(1, content);
             stmt.executeUpdate();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void markTodoDone(int id) {
+        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
+             PreparedStatement stmt = conn.prepareStatement("UPDATE todos SET done = TRUE WHERE id = ?")) {
+            stmt.setInt(1, id);
+            stmt.executeUpdate();
+            System.out.println("Marked todo " + id + " as done.");
         } catch (Exception e) {
             e.printStackTrace();
         }

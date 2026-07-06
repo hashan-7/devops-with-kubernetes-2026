@@ -9,15 +9,26 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class Main {
     private static final String DIRECTORY_PATH = "/usr/src/app/files";
     private static final String FILE_PATH = DIRECTORY_PATH + "/image.jpg";
     private static boolean isDownloading = false;
     private static String backendUrl;
-
-
     private static boolean isHealthy = true;
+
+    private static class Todo {
+        int id;
+        String content;
+        boolean done;
+        Todo(int id, String content, boolean done) {
+            this.id = id;
+            this.content = content;
+            this.done = done;
+        }
+    }
 
     public static void main(String[] args) throws IOException {
         File dir = new File(DIRECTORY_PATH);
@@ -42,25 +53,45 @@ public class Main {
                 if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                     checkAndTriggerDownload();
 
-                    List<String> todos = fetchTodosFromBackend();
+                    List<Todo> todos = fetchTodosFromBackend();
 
-                    StringBuilder listHtml = new StringBuilder("<ul>");
-                    for (String todo : todos) {
-                        listHtml.append("<li>").append(todo).append("</li>");
+                    StringBuilder listHtml = new StringBuilder("<ul style=\"list-style-type: none; padding: 0;\">");
+                    for (Todo todo : todos) {
+                        listHtml.append("<li style=\"margin-bottom: 10px; padding: 10px; border: 1px solid #ccc; width: 400px; display: flex; justify-content: space-between; align-items: center; border-radius: 5px; background: #f9f9f9;\">");
+                        if (todo.id == -1) {
+                            listHtml.append("<span>").append(todo.content).append("</span>");
+                        } else if (todo.done) {
+                            listHtml.append("<span style=\"color: #155724; font-weight: bold;\">✓ Done: <strike style=\"color: #6c757d; font-weight: normal;\">").append(todo.content).append("</strike></span>");
+                        } else {
+                            listHtml.append("<span>").append(todo.content).append("</span>");
+                            listHtml.append("<button onclick=\"markDone(").append(todo.id).append(")\" style=\"background: #0d6efd; color: white; border: none; padding: 5px 10px; cursor: pointer; border-radius: 3px;\">Mark done</button>");
+                        }
+                        listHtml.append("</li>");
                     }
                     listHtml.append("</ul>");
 
-                    String response = "<html><body>" +
+                    String response = "<html><head><title>Todo App</title>" +
+                            "<script>" +
+                            "   async function markDone(id) {" +
+                            "       try {" +
+                            "           await fetch('/todos/' + id, { method: 'PUT' });" +
+                            "           window.location.reload();" +
+                            "       } catch (error) {" +
+                            "           console.error('Error updating todo:', error);" +
+                            "       }" +
+                            "   }" +
+                            "</script>" +
+                            "</head><body style=\"font-family: Arial, sans-serif; padding: 20px;\">" +
                             "<h1>Todo App</h1>" +
-                            "<img src=\"/image\" style=\"max-width:100%; max-height:400px;\" /><br/><br/>" +
+                            "<img src=\"/image\" style=\"max-width:100%; max-height:400px; border-radius: 10px;\" /><br/><br/>" +
                             "<form action=\"/todos\" method=\"POST\" style=\"margin-bottom: 20px;\">" +
-                            "   <input type=\"text\" name=\"content\" maxlength=\"140\" placeholder=\"Enter your todo...\" style=\"width: 300px; padding: 5px;\" required /> " +
-                            "   <button type=\"submit\">Send</button>" +
+                            "   <input type=\"text\" name=\"content\" maxlength=\"140\" placeholder=\"Enter your todo...\" style=\"width: 300px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;\" required /> " +
+                            "   <button type=\"submit\" style=\"padding: 8px 15px; background: #198754; color: white; border: none; border-radius: 4px; cursor: pointer;\">Send</button>" +
                             "</form>" +
                             "<h3>My Todos:</h3>" +
                             listHtml.toString() +
                             "<br/><br/>" +
-                            "<button id=\"break-btn\" style=\"background: red; color: white; padding: 10px; cursor: pointer; border: none; border-radius: 5px;\">" +
+                            "<button id=\"break-btn\" style=\"background: #dc3545; color: white; padding: 10px 15px; cursor: pointer; border: none; border-radius: 5px; font-weight: bold;\">" +
                             "   Break the app" +
                             "</button>" +
                             "<script>" +
@@ -95,12 +126,22 @@ public class Main {
             } else if (path.equals("/todos") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                 InputStream is = exchange.getRequestBody();
                 String body = new String(is.readAllBytes());
-                System.out.println("[Todo App] New todo creation request received: " + body);
-
                 sendTodoToBackend(body);
 
                 exchange.getResponseHeaders().set("Location", "/");
                 exchange.sendResponseHeaders(303, -1);
+                exchange.getResponseBody().close();
+            } else if (path.startsWith("/todos/") && "PUT".equalsIgnoreCase(exchange.getRequestMethod())) {
+                String idStr = path.substring("/todos/".length());
+                try {
+                    URL url = new URL(backendUrl + "/" + idStr);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("PUT");
+                    int code = conn.getResponseCode();
+                    exchange.sendResponseHeaders(code, -1);
+                } catch (Exception e) {
+                    exchange.sendResponseHeaders(500, -1);
+                }
                 exchange.getResponseBody().close();
             } else {
                 exchange.sendResponseHeaders(404, -1);
@@ -136,24 +177,28 @@ public class Main {
         System.out.println("Frontend started on port " + port);
     }
 
-    private static List<String> fetchTodosFromBackend() {
-        List<String> list = new ArrayList<>();
+    private static List<Todo> fetchTodosFromBackend() {
+        List<Todo> list = new ArrayList<>();
         try {
             URL url = new URL(backendUrl);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             try (InputStream in = conn.getInputStream()) {
                 String raw = new String(in.readAllBytes()).trim();
-                if (raw.length() > 2) {
-                    String clean = raw.substring(1, raw.length() - 1);
-                    String[] items = clean.split("\",\"");
-                    for (String item : items) {
-                        list.add(item.replace("\"", ""));
-                    }
+
+
+                Pattern p = Pattern.compile("\\{\"id\":(\\d+),\"content\":\"(.*?)\",\"done\":(true|false)\\}");
+                Matcher m = p.matcher(raw);
+                while(m.find()) {
+                    list.add(new Todo(
+                            Integer.parseInt(m.group(1)),
+                            m.group(2),
+                            Boolean.parseBoolean(m.group(3))
+                    ));
                 }
             }
         } catch (Exception e) {
-            list.add("Backend unavailable: " + e.getMessage());
+            list.add(new Todo(-1, "Backend unavailable: " + e.getMessage(), false));
         }
         return list;
     }
