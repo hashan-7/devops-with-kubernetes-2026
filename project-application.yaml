@@ -1,17 +1,38 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: todo-project-app
+  name: todo-staging
   namespace: argocd
 spec:
   project: default
   source:
     repoURL: 'https://github.com/hashan-7/devops-with-kubernetes-2026.git'
     targetRevision: HEAD
-    path: todo-app/manifests
+    path: todo-app/overlays/staging
   destination:
     server: 'https://kubernetes.default.svc'
-    namespace: project
+    namespace: staging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+
+---
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: todo-production
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/hashan-7/devops-with-kubernetes-2026.git'
+    targetRevision: HEAD
+    path: todo-app/overlays/production
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: production
   syncPolicy:
     automated:
       prune: true

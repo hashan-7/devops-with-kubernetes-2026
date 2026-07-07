@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+namespace: staging
+
+
+patchesStrategicMerge:
+  - |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: broadcaster-dep
+    spec:
+      template:
+        spec:
+          containers:
+            - name: broadcaster
+              env:
+                - name: WEBHOOK_URL
+                  value: ""
