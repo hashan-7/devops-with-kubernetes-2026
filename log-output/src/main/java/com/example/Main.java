@@ -18,6 +18,7 @@ public class Main {
         Thread logThread = new Thread(() -> {
             while (true) {
                 String count = fetchPongCount();
+                String greeting = fetchGreeting();
                 String fileContent = "";
                 try {
                     fileContent = Files.readString(Paths.get("/config/information.txt")).trim();
@@ -28,6 +29,7 @@ public class Main {
 
                 System.out.println("file content: " + fileContent);
                 System.out.println("env variable: MESSAGE=" + messageEnv);
+                System.out.println("greeting: " + greeting);
                 System.out.println(Instant.now().toString() + ": " + RANDOM_STRING + ". Ping / Pongs: " + count);
 
                 try { Thread.sleep(5000); } catch (InterruptedException e) { break; }
@@ -40,6 +42,7 @@ public class Main {
 
         server.createContext("/", exchange -> {
             String count = fetchPongCount();
+            String greeting = fetchGreeting();
             String fileContent = "";
             try {
                 fileContent = Files.readString(Paths.get("/config/information.txt")).trim();
@@ -50,6 +53,7 @@ public class Main {
 
             String response = "file content: " + fileContent + "\n" +
                     "env variable: MESSAGE=" + messageEnv + "\n" +
+                    "greeting: " + greeting + "\n" +
                     Instant.now().toString() + ": " + RANDOM_STRING + ". Ping / Pongs: " + count;
 
             exchange.getResponseHeaders().set("Content-Type", "text/plain");
@@ -57,7 +61,6 @@ public class Main {
             exchange.getResponseBody().write(response.getBytes());
             exchange.getResponseBody().close();
         });
-
 
         server.createContext("/healthz", exchange -> {
             if (isPingPongReady()) {
@@ -78,7 +81,6 @@ public class Main {
 
     private static String fetchPongCount() {
         try {
-
             URL url = new URL("http://ping-pong-svc:80/pongs");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
@@ -90,6 +92,22 @@ public class Main {
             }
         } catch (Exception e) {
             return "0";
+        }
+    }
+
+    private static String fetchGreeting() {
+        try {
+            URL url = new URL("http://greeter-svc:80/");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(2000);
+
+            try (InputStream in = conn.getInputStream()) {
+                return new String(in.readAllBytes()).trim();
+            }
+        } catch (Exception e) {
+            return "Error calling greeter";
         }
     }
 
